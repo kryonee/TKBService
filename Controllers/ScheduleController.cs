@@ -11,10 +11,10 @@ namespace TKBService.Controllers
     {
         public async Task RunAsync(bool useApi = true)
         {
+            DotNetEnv.Env.Load();
             Console.OutputEncoding = Encoding.UTF8;
 
             List<ScheduleItem> scheduleItems;
-
             if (useApi)
             {
                 var apiUrl = "https://taydo.taydocantho.com/Api/Public/GetPaging";
@@ -27,11 +27,11 @@ namespace TKBService.Controllers
                 var postData = new { page = 1, pageSize = 100 };
                 var content = new StringContent(JsonSerializer.Serialize(postData), Encoding.UTF8, "application/json");
 
-                Console.WriteLine("\ud83d\udce1 \u0110ang g\u1ecdi API...");
+                Console.WriteLine("Fetching API...");
                 var response = await httpClient.PostAsync(apiUrl, content);
                 if (!response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine($"\u274c API l\u1ed7i: {response.StatusCode}");
+                    Console.WriteLine($"API Error: {response.StatusCode}");
                     return;
                 }
 

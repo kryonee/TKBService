@@ -19,3 +19,4 @@ fallback.log
 # Others
 *.DS_Store
 *.swp
+*.env
