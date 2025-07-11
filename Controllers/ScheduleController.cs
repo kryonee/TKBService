@@ -9,7 +9,7 @@ namespace TKBService.Controllers
 {
     public class ScheduleController
     {
-        public async Task RunAsync(bool useApi = false)
+        public async Task RunAsync(bool useApi = true)
         {
             Console.OutputEncoding = Encoding.UTF8;
 
