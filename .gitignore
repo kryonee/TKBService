@@ -1,0 +1,21 @@
+# Build outputs
+bin/
+obj/
+
+# User-specific files
+.vs/
+*.user
+*.suo
+
+# Logs
+*.log
+
+# JSON and Excel outputs
+output.json
+scheduled_by_class.json
+scheduled.xlsx
+fallback.log
+
+# Others
+*.DS_Store
+*.swp
