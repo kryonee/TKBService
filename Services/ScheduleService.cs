@@ -13,12 +13,12 @@ namespace TKBService.Services
                 .Distinct()
                 .ToList();
 
-            var teachers = Enumerable.Range(1, 20).Select(i => new Teacher(
+            var teachers = Enumerable.Range(1, 100).Select(i => new Teacher(
                 $"GV{i:00}",
-                allSubjects.OrderBy(_ => rand.Next()).Take(15).ToList(),
+                allSubjects.OrderBy(_ => rand.Next()).Take(30).ToList(),
                 (from d in Enumerable.Range(1, 6)
-                 from p in Enumerable.Range(1, 5)
-                 where rand.NextDouble() < 0.95
+                 from p in Enumerable.Range(1, 6)
+                 where rand.NextDouble() < 0.98
                  select ((DayOfWeek)d, p)).ToList()
             )).ToList();
 
@@ -30,82 +30,70 @@ namespace TKBService.Services
 
             var usedTeachers = new Dictionary<string, HashSet<Slot>>();
             var usedRooms = new Dictionary<string, HashSet<Slot>>();
-            var usedSubjects = new Dictionary<string, HashSet<Slot>>();
             var scheduled = new List<ScheduleAssignment>();
-
-            bool IsSlotNear(HashSet<Slot> assignedSlots, Slot newSlot) => false;
+            var failedSubjects = new List<string>();
+            var reasons = new Dictionary<string, List<string>>();
 
             var days = Enum.GetValues<DayOfWeek>().Where(d => d >= DayOfWeek.Monday && d <= DayOfWeek.Saturday);
-            var periods = Enumerable.Range(1, 5);
+            var periods = Enumerable.Range(1, 6);
 
-            foreach (var subject in scheduleList)
+            // Greedy strategy: group by subject+class to reduce conflict
+            var grouped = scheduleList.GroupBy(x => $"{x.SubjectName}||{x.SubjectTeachingName}");
+
+            foreach (var group in grouped)
             {
-                if (string.IsNullOrEmpty(subject.SubjectName) || string.IsNullOrEmpty(subject.SubjectTeachingName)) continue;
+                var subjectParts = group.Key.Split("||");
+                var subjectName = subjectParts[0];
+                var className = subjectParts[1];
+                var subjectKey = $"{subjectName} ({className})";
 
-                Console.WriteLine($"[DEBUG] Đang xét môn: {subject.SubjectName} ({subject.SubjectTeachingName})");
+                reasons[subjectKey] = new();
 
-                var teacherOptions = teachers.Where(t => t.CanTeachSubjects.Contains(subject.SubjectName)).OrderBy(_ => rand.Next()).ToList();
-                var roomOptions = rooms.Where(r => r.RoomType == subject.FacultyName).ToList();
+                var teacherOptions = teachers.Where(t => t.CanTeachSubjects.Contains(subjectName)).OrderBy(_ => rand.Next()).ToList();
+                if (!teacherOptions.Any())
+                {
+                    reasons[subjectKey].Add("Không có giáo viên nào phù hợp");
+                    failedSubjects.Add($"⚠️ Không thể xếp môn: {subjectKey}");
+                    continue;
+                }
 
+                var roomOptions = rooms.Where(r => r.RoomType == group.First().FacultyName).ToList();
                 if (roomOptions.Count == 0)
                 {
-                    Console.WriteLine($"[DEBUG] Không tìm thấy phòng phù hợp với khoa '{subject.FacultyName}' — fallback sang tất cả phòng");
+                    reasons[subjectKey].Add("Không tìm thấy phòng đúng khoa — fallback dùng tất cả phòng");
                     roomOptions = rooms.ToList();
                 }
 
-                roomOptions = roomOptions
-                    .OrderBy(r => usedRooms.TryGetValue(r.Id, out var used) ? used.Count : 0)
-                    .ToList();
+                roomOptions = roomOptions.OrderBy(r => usedRooms.TryGetValue(r.Id, out var used) ? used.Count : 0).ToList();
 
                 var slotOptions = (from d in days from p in periods select new Slot(d, p))
-                    .OrderBy(slot =>
-                        (usedRooms.Values.Count(ur => ur.Contains(slot)) +
-                         usedTeachers.Values.Count(ut => ut.Contains(slot)) +
-                         usedSubjects.Values.Count(us => us.Contains(slot))))
+                    .OrderBy(slot => usedRooms.Values.Count(ur => ur.Contains(slot)) + usedTeachers.Values.Count(ut => ut.Contains(slot)))
                     .ToList();
 
-                Console.WriteLine($"[DEBUG] Số giáo viên phù hợp: {teacherOptions.Count}, số phòng phù hợp: {roomOptions.Count}, số slot: {slotOptions.Count}");
-
                 bool assigned = false;
-                foreach (var teacher in teacherOptions)
+                foreach (var slot in slotOptions)
                 {
-                    Console.WriteLine($"[DEBUG] Giáo viên {teacher.Id} có {teacher.AvailableSlots.Count} slot rảnh.");
-                    usedTeachers.TryAdd(teacher.Id, new());
-
-                    foreach (var room in roomOptions)
+                    foreach (var teacher in teacherOptions)
                     {
-                        usedRooms.TryAdd(room.Id, new());
-                        usedSubjects.TryAdd(subject.SubjectName, new());
+                        if (!teacher.AvailableSlots.Contains((slot.Day, slot.Period))) continue;
+                        usedTeachers.TryAdd(teacher.Id, new());
+                        if (usedTeachers[teacher.Id].Contains(slot)) continue;
 
-                        foreach (var slot in slotOptions)
+                        foreach (var room in roomOptions)
                         {
-                            bool available = true;
+                            usedRooms.TryAdd(room.Id, new());
+                            if (usedRooms[room.Id].Contains(slot)) continue;
 
-                            if (!teacher.AvailableSlots.Contains((slot.Day, slot.Period)))
+                            foreach (var item in group)
                             {
-                                available = false;
+                                scheduled.Add(new ScheduleAssignment(
+                                    item.SubjectName!, teacher.Id, room.Id, slot.Day, slot.Period, item.SubjectTeachingName!
+                                ));
                             }
-                            else if (usedTeachers[teacher.Id].Contains(slot)) available = false;
-                            else if (usedRooms[room.Id].Contains(slot))
-                            {
-                                Console.WriteLine($"[DEBUG] Phòng {room.Id} đã bị chiếm slot {slot.Day}, Ca {slot.Period}");
-                                available = false;
-                            }
-                            else if (usedSubjects[subject.SubjectName].Contains(slot)) available = false;
-
-                            if (!available) continue;
-
-                            Console.WriteLine($"[DEBUG] Slot hợp lệ tìm thấy: GV {teacher.Id} - {room.Id} - {slot.Day}, Ca {slot.Period}");
 
                             usedTeachers[teacher.Id].Add(slot);
                             usedRooms[room.Id].Add(slot);
-                            usedSubjects[subject.SubjectName].Add(slot);
-
-                            scheduled.Add(new ScheduleAssignment(
-                                subject.SubjectName!, teacher.Id, room.Id, slot.Day, slot.Period, subject.SubjectTeachingName!
-                            ));
-
-                            Console.WriteLine($"[DEBUG] Xếp {subject.SubjectName} với GV {teacher.Id} tại {room.Id}, {slot.Day}, Ca {slot.Period}");
+                            reasons.Remove(subjectKey);
                             assigned = true;
                             break;
                         }
@@ -116,7 +104,22 @@ namespace TKBService.Services
 
                 if (!assigned)
                 {
-                    Console.WriteLine($"Không thể xếp môn: {subject.SubjectName} ({subject.SubjectTeachingName})");
+                    failedSubjects.Add($"⚠️ Không thể xếp môn: {subjectKey}");
+                }
+            }
+
+            if (failedSubjects.Any())
+            {
+                File.WriteAllLines("unscheduled.log", failedSubjects);
+                Console.WriteLine($"(Tổng: {failedSubjects.Count}) môn không thể xếp slot");
+
+                using var sw = new StreamWriter("unscheduled_detailed.log");
+                foreach (var kvp in reasons)
+                {
+                    sw.WriteLine($"⛔ {kvp.Key}");
+                    foreach (var reason in kvp.Value.Distinct())
+                        sw.WriteLine($"  - {reason}");
+                    sw.WriteLine();
                 }
             }
 

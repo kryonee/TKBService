@@ -85,7 +85,7 @@ namespace TKBService.Controllers
                     Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                 }));
 
-            Console.WriteLine("\ud83d\udcc2 \u0110\u00e3 l\u01b0u l\u1ecbch nh\u00f3m theo l\u1edbp v\u00e0o scheduled_by_class.json");
+            Console.WriteLine("Đã xuất file scheduled_by_class.json");
         }
     }
 }
